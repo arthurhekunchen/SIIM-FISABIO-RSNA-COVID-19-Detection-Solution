@@ -1,8 +1,86 @@
-# Kaggle SIIM-FISABIO-RSNA COVID-19 Detection 15th   Solution
+# Kaggle SIIM-FISABIO-RSNA COVID-19 Detection 30th Solution(Enhanced version)
+
+## INTRODUCTION
+1. The contestants construct computer vision models to diagnose whether a patient has COVID-19 by X-ray chest radiograph and to localize the infected area of the lung.
+2. This competition is a fusion of two models, "Image Classification" and "Target Detection", to get the final result. We can try the idea of "EffecientNet + YOLOv5" to accomplish this.
+
+## DATASET
+1. The data size is very large (approximately 100G), but there are only more than 6000 training data. The reason is that the data uses a special format for medical imaging DCM, each image takes up more space.
+2. After a brief preview of the data, we found that the data was divided into two levels, study_level and image_level.
+   Study represents one examination and image represents one image. A single examination may contain multiple images (the reason may be poorly positioned, unclear imaging, etc.). The training set contains a total of 6054 examinations and 6334 images. 
+3. A study may contain only one of the following four results: "negative", "typical", "indeterminate", "atypical".
+   Target detection is for image_level and has only one target: opacity (lung opacity), but a single image can have multiple opacities.
+
+## FINAL SOLUTION SUMMARY
+1. Using EfficientnetV2-L-in21k for the 4-classification task, after completing the training with 5 Folds, we can get the PublicLB 0.462 for pure classification.
+2. Using Yolov5 with modified structure for target detection, the result can be boosted to PublicLB 0.636 after completing the training with 5 Folds.
+3. Using WBF to fuse the Yolov5 with the public CascadeRCNN (https://www.kaggle.com/sreevishnudamodaran/siim-effnetv2-l-cascadercnn-mmdetection-infer), we can improve the result by PublicLB 0.638.
+4. For the value of none in target detection, using EfficientnetV2-L-in21k to make a 2-classification task (also 5Fold) to predict the result, we can improve the result by PublicLB 0.644.
+
+## MODEL DETAILS
+
+### C**lassification**: EfficientnetV2-L-in21k
+
+- The pre-trained imagenet weights are from the timm library.
+- 512 x 512 (5-fold) image size.
+- Joint loss function:[0.5* FocalLoss+ 0.5* BCE].
+- A warmup CosineAnnealingLR scheduler is used.
+- The activation layer of the model was replaced with Mish activation.
+
+###  **Detection**: YOLOv5
+
+**Yolo - v5l6:** It is trained on a pseudo-label of training data and public test data. The image size used for training is 640 x 640. Some images without bounding boxes (20%) are also included in the training data.
+
+**Yolo - v5x:** It is trained on pseudo-labels of the training data and the public test data. The image size used is the default value of Yolo-v5x, i.e. 640 x 640. The training data also includes some images without bounding boxes (20%).
+
+- Pre-train the backbone model of FasterRCNN with chexpert + chest14
+- Train model with siim covid trainset, load weights from rsna checkpoint
+- Loss function: FocalLoss
+- inference stage: 3TTA of Yolov5 (original, scale 0.83 + hflip, scale 0.67)
+
+
+## DATA ENHANCEMENT METHODS
+
+- RandomResizedCrop
+- ShiftScaleRotate
+- HorizontalFlip
+- VerticalFlip
+- Blur
+- CLAHE
+- IAASharpen
+- IAAEmboss
+- RandomBrightnessContrast
+- Cutout
+
+
+## COMPETITION TRICK POINTS
+1. Because of the unbalanced sample of competition data, we used FocalLoss in the classification, increasing the score by about 0.02.
+2. The amount of data is small. In order to prevent overfitting, we used aux task to increase the difficulty of the training task and increased the score by about 0.05. (https://www.kaggle.com/c/siim-covid19-detection/discussion/240233)
+3. The data of this competition is very sensitive to super-reference(lr, loss and aug are all very sensitive), which is more easy to over-fit. Thus, we used optuna to adjust the reference, successfully increased the score by 0.05.
+4. For the data of this competition, the fusion of target detection using WBF worked well and resulted in a score improvement of 0.02.
+5. In the inference stage, we used "hflip" to deal with "tta" during image classification, increasing the score by 0.01 ~ 0.02.
+
+
+## METHODS IN VAIN
+1. Because of the small number of datasets, we introduced external dataset RSNA data for softlabel, but the score did not improve.
+2. We tried to introduce aux task in Yolov5, but the code was very complicated. Probably because of the code logic, the score did not improve, so we did not spend extra time later.
+
+
+## THINGS DIDN'T GET TO TRY
+
+- Multi-task classification + detection
+- Stacking multi-classification models using cnn or lgbm
+- Mixing of classification models + shear mixing
+- Bimcv + ricord dataset: most of the images in bimcv and ricord are duplicated with siim covid trainset and testet. To avoid data leakage during training, we did not use them.
+- Increasing the input size of the classification model to 1024, the CV and public LB scores are almost unchanged from 512.
+
+
+
+
 
 ## 比赛介绍
 1. 参赛者通过构建计算机视觉模型通过X-ray胸片诊断患者是否患有COVID-19，并且对肺部感染区域进行定位。
-2. 这次比赛是 图像分类 + 目标检测 两种模型的融合，来获得最终结果,可以尝试EffecientNet + YOLOv5的思路来完成。
+2. 这次比赛是通过 图像分类 + 目标检测 两种模型的融合来获得最终结果,可以尝试EffecientNet + YOLOv5的思路来完成。
 
 
 ## 比赛数据
